@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bomber</title>
+  <script type="text/javascript" src="angular.min.js"></script>
+  <script type="text/javascript" src="coffee-script.min.js"></script>
+  <style type="text/css">
+  * { box-sizing: border-box; }
+  .screen { display: inline-block; border: 1px solid black; line-height: 0; background: -webkit-radial-gradient(245px 5px, ellipse farthest-corner, #ff0 0%, #fff 5%, #CAE2F3 10%, #87CEEB 95%); }
+  .cell { display: inline-block; width: 20px; height: 20px; }
+  .building { border: 1px solid black; background-color: #888; }
+  .plane { background-color: red; background: url(plane.png) no-repeat; }
+  .plane.front { background-position-x: -20px; }
+  .plane.crashed { background-color: yellow; }
+  .bomb { background: url(bomb.png) no-repeat 0px 7px; }
+  </style>
+  <script type="text/coffeescript">
+  app = angular.module("myApp", [])
+  H = 20
+  W = 30
+  class Cell
+    constructor: (@row, @col)->
+      @clazz = 'empty'
+
+  class Plane
+    constructor: ->
+      @row = 0
+      @col = 0
+      @speed = 1.0
+
+  class Bomb
+    constructor: (@row, @col, @speed)->
+      @power = undefined
+
+    isAlive: ->
+      @row < H && (@power == undefined || @power > 0)
+
+  app.controller 'AppController', ['$scope', '$interval', '$timeout', (scope, $interval, $timeout)->
+    window.scope = scope
+    scope.plane = new Plane()
+    scope.bomb = new Bomb(H, 0)
+    scope.score = 0
+    scope.remaining = 0
+
+    scope.rows = []
+    scope.isCrashed = ->
+      scope.rows[scope.plane.row][scope.plane.col + 1].clazz != 'empty'
+    scope.isVictory = ->
+      scope.remaining == 0
+    scope.isHit = (bomb)->
+      bomb.row < H && scope.rows[bomb.row][bomb.col].clazz != 'empty'
+
+    scope.getClassFor = (cell)->
+      if scope.plane.row == cell.row && scope.plane.col == cell.col
+        if scope.isCrashed()
+          'plane rear crashed'
+        else
+          'plane rear'
+      else if scope.plane.row == cell.row && scope.plane.col + 1 == cell.col
+        if scope.isCrashed()
+          'plane front crashed'
+        else
+          'plane front'
+      else if scope.bomb.isAlive() && scope.bomb.row == cell.row && scope.bomb.col == cell.col
+        'bomb'
+      else
+        cell.clazz
+
+    for r in [0 .. H - 1]
+      scope.rows.push( (new Cell(r, c) for c in [0 .. W - 1]) )
+
+    for c in [1 .. W - 2]
+      height = Math.floor Math.random() * (H - 3) + 2
+      for r in [H - 1 .. H - height]
+        scope.rows[r][c].clazz = 'building'
+        scope.remaining++
+
+    timer = null
+    step = ->
+      scope.plane.col++
+      if scope.plane.col >= W - 1
+        scope.plane.col = 0
+        scope.plane.row++
+        scope.plane.speed *= 1.1
+        $interval.cancel timer
+        timer = $interval step, 1000 / scope.plane.speed
+
+      if scope.isCrashed() || scope.isVictory()
+        $interval.cancel timer
+
+    timer = $interval step, 1000 / scope.plane.speed
+
+    moveBomb = ->
+      scope.bomb.row++
+      if scope.isHit scope.bomb
+        if scope.bomb.power == undefined
+          scope.bomb.power = scope.bomb.speed + 2
+          scope.bomb.speed = 10
+        scope.rows[scope.bomb.row][scope.bomb.col].clazz = 'empty'
+        scope.bomb.power -= 2
+        scope.score++
+        scope.remaining--
+      else
+        scope.bomb.speed++
+      if scope.bomb.isAlive()
+        $timeout moveBomb, 1000 / scope.bomb.speed
+
+    scope.onKeypress = ->
+      return if scope.isCrashed() || scope.isVictory() || scope.bomb && scope.bomb.isAlive()
+      scope.bomb = new Bomb(scope.plane.row, scope.plane.col + 1, 2)
+      $timeout moveBomb, 1000 / scope.bomb.speed
+  ]
+  angular.bootstrap(document, ['myApp'])
+  </script>
+</head>
+<body ng-controller="AppController" ng-keypress="onKeypress()">
+  <div class="header">
+    Score: <span class="score">{{score}}</span>
+    Remaining: <span class="remaining">{{remaining}}</span>
+  </div>
+  <div class="screen">
+    <div class="row" ng-repeat="row in rows">
+      <div class="cell" ng-repeat="cell in row" ng-class="getClassFor(cell)"></div>
+    </div>
+  </div>
+  <div class="victory" ng-show="isVictory()">Victory!</div>
+  <div class="lose" ng-show="isCrashed()">Your plane crashed, try next time!</div>
+</body>
+</html>
